@@ -25,10 +25,18 @@ fs.watchFile(configFilename, {persistent: false}, function() {
 })
 
 
-var server = new ws.Server({host: config.host, port: config.port})
+var server = new ws.Server({ host: config.host, port: config.port })
 console.log("Started server on " + config.host + ":" + config.port)
 
 server.on('connection', function(socket) {
+	// Socket receiver has crashed, flush and kill socket
+	socket._receiver.onerror = function(e){
+		socket._receiver.flush();
+		socket._receiver.messageBuffer = [];
+		socket._receiver.cleanup();
+		socket.close();
+	}
+
 	socket.on('message', function(data) {
 		try {
 			// Don't penalize yet, but check whether IP is rate-limited
@@ -51,6 +59,12 @@ server.on('connection', function(socket) {
 			}
 		}
 		catch (e) {
+			// Socket sent malformed JSON or buffer contains invalid JSON
+			// For security reasons, we should kill it
+			socket._receiver.flush();
+			socket._receiver.messageBuffer = [];
+			socket._receiver.cleanup();
+			socket.close()
 			console.warn(e.stack)
 		}
 	})
